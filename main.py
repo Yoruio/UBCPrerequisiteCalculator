@@ -1,8 +1,69 @@
 from selenium import webdriver
+import re
 import time
 from webdriver_manager.chrome import ChromeDriverManager
 from random import randint
 from selenium.webdriver.chrome.options import Options
+
+
+def find(numbers, match):
+    for i in numbers:
+        if i == match:
+            return True
+    return False
+
+
+def parsereqs(req_str):
+    return req_str.split(' and ')
+
+
+def printreqs(req_list, indent):
+    for prereq in req_list:
+        for i in range(indent):
+            print("\t", end='')
+        print(prereq)
+    print('\n')
+
+
+class CourseInfo:
+    def __init__(self, course_name='unset', course_code='unset', course_number='unset', course_credit=None,
+                 course_description='unset', course_prereqs=None, course_coreqs=None):
+        if course_coreqs is None:
+            course_coreqs = []
+        if course_prereqs is None:
+            course_prereqs = []
+        if course_credit is None:
+            course_credit = 404
+        self.name = course_name
+        self.credits = course_credit
+        self.prereqs = course_prereqs
+        self.coreqs = course_coreqs
+        self.code = course_code
+        self.number = course_number
+        self.description = course_description
+
+    def __str__(self):
+        # general info
+        returnstr = "%s %s - %s:\n\tCredits: %s\n" % (self.code, self.number, self.name,
+                                                      'unset' if self.credits == 404 else str(self.credits))
+
+        # prerequisites
+        returnstr += "\tPrerequisites:\n"
+        if len(self.prereqs) == 0:
+            returnstr += "\t\tNone\n"
+        else:
+            for prereq in self.prereqs:
+                returnstr += "\t\t%s\n" % prereq
+
+        # corequisites
+        returnstr += "\tCorequisites:\n"
+        if len(self.coreqs) == 0:
+            returnstr += "\t\tNone\n"
+        else:
+            for coreq in self.coreqs:
+                returnstr += "\t\t%s\n" % coreq
+
+        return returnstr
 
 
 class Course:
@@ -12,13 +73,6 @@ class Course:
 
     def __str__(self):
         return "%s %s" % (self.code.upper(), self.number)
-
-
-def find(numbers, match):
-    for i in numbers:
-        if i == match:
-            return True
-    return False
 
 
 class CourseList:
@@ -49,36 +103,55 @@ chrome_options.add_argument('log-level=2')
 '''
 
 courses = CourseList()
-CC = input('Enter Course Code (Ex. MATH 100): ')
+CC = input('Enter course code (Ex. MATH 100) leave blank to continue: ')
 while CC != "":
-    courses.add(Course(CC.split()[0],CC.split()[1]))
-    CC = input('Enter Course Code (Ex. MATH 100): ')
+    courses.add(Course(CC.split()[0], CC.split()[1]))
+    CC = input('Enter course code (Ex. MATH 100) leave blank to continue: ')
 print(courses.list)
 
 browser = webdriver.Chrome(ChromeDriverManager().install())
+info_list = []
+# populate info_list
+for course in courses.list:
+    code = course[0]
+    browser.get("http://www.calendar.ubc.ca/vancouver/courses.cfm?page=code&code=%s" % code)
+    if browser.current_url.endswith('index.cfm'):
+        print('WARNING: Could not find course code %s' % code)
+    else:
+        for number in course[1]:
 
-for i in courses.list:
-    browser.get("http://www.calendar.ubc.ca/vancouver/courses.cfm?page=code&code=%s" % (i[0]))
-    elements = browser.find_elements_by_xpath('//*[@name="%s"]/parent::dt/following-sibling::dd[1]' % (i[1][0]))
-    print(elements)
-    for element in elements:
-        print(element.text)
+            # find corresponding course name and page element
+            element = browser.find_elements_by_xpath('//*[@name="%s"]/parent::dt/following-sibling::dd[1]' % number)
+            if len(element) == 0:
+                print('WARNING: Could not find course %s %s' % (code, number))
+            elif len(element) > 1:
+                print('WARNING: Duplicate course %s %s?' % (code, number))
+            else:
+                name = browser.find_elements_by_xpath('//*[@name="%s"]/parent::dt' % number)
+                name = name[0].text
+                credit = name[name.find('(') + 1:name.find(')')]
+
+                info = CourseInfo()
+                info.name = name.split(') ', 1)[1]
+                info.code = code
+                info.number = number
+                info.credits = int(credit)
+
+                element = element[0]
+
+                # find prerequisites and corequisites
+                for paragraph in element.text.split('\n'):
+                    if paragraph.lower().startswith('prerequisite'):
+                        prereqs = paragraph.split(': ', 1)[1]
+                        info.prereqs = parsereqs(prereqs)
+
+                    if paragraph.lower().startswith('corequisite'):
+                        coreqs = paragraph.split(': ', 1)[1]
+                        info.coreqs = parsereqs(coreqs)
+            info_list.append(info)
 
 
-'''
-    browser.get("https://www.bcgreengames.ca/project/zero-waste3634")
-    time.sleep(sleepTime)
+for course in info_list:
+    print(course)
 
-    likeButton = browser.find_element_by_id('lb-like-0')
-    # time.sleep(sleepTime)
-
-    likeButton.click()
-    # time.sleep(sleepTime)
-
-    voteCount = browser.find_element_by_class_name('lb-count');
-    print("votes: " + voteCount.get_attribute('data-count'))
-
-    time.sleep(voteTime + randint(0, randTime))
-'''
 browser.quit()
-
