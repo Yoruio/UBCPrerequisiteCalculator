@@ -13,8 +13,32 @@ def find(numbers, match):
     return False
 
 
+def isint(string):
+    try:
+        int(string)
+        return True
+    except ValueError:
+        return False
+
+
 def parsereqs(req_str):
-    return req_str.split(' and ')
+    req_list = req_str.split(' and ')
+    for i in range(len(req_list)):
+        if req_list[i].lower().startswith("one of"):
+            req_list[i] = req_list[i].lower().split('one of')[1].split(", ")
+            for j in range(len(req_list[i])):
+                req_list[i][j] = req_list[i][j].strip()
+                if req_list[i][j].startswith("or "):
+                    req_list[i][j] = req_list[i][j].split("or ")[1]
+                if req_list[i][j].startswith("("):
+                    req_list[i][j] = req_list[i][j][4:]
+                if req_list[i][j].endswith("."):
+                    req_list[i][j] = req_list[i][j][:-1]
+                #is a course?
+                if len(req_list[i][j].split(' ')) == 2 and isint(req_list[i][j].split(' ')[1]):
+                    req_list[i][j] = Course(req_list[i][j].split(' ')[0],req_list[i][j].split(' ')[1])
+
+    return req_list
 
 
 def printreqs(req_list, indent):
@@ -72,6 +96,9 @@ class Course:
         self.number = str(number).upper()
 
     def __str__(self):
+        return "%s %s" % (self.code.upper(), self.number)
+
+    def __repr__(self):
         return "%s %s" % (self.code.upper(), self.number)
 
 
@@ -148,10 +175,12 @@ for course in courses.list:
                     if paragraph.lower().startswith('corequisite'):
                         coreqs = paragraph.split(': ', 1)[1]
                         info.coreqs = parsereqs(coreqs)
-            info_list.append(info)
+                info_list.append(info)
 
 
 for course in info_list:
-    print(course)
+    # print(course)
+    print(course.code + " " + course.number + ": ")
+    print(course.prereqs)
 
 browser.quit()
