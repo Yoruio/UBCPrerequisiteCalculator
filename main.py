@@ -1,6 +1,6 @@
 from helper import *
 from requests import get
-from bs4 import BeautifulSoup, element
+from bs4 import BeautifulSoup
 
 
 courses = collectcourses()

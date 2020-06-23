@@ -1,12 +1,4 @@
-from selenium import webdriver
 import re
-import time
-from webdriver_manager.chrome import ChromeDriverManager
-from random import randint
-from selenium.webdriver.chrome.options import Options
-
-
-
 
 
 def find(numbers, match):
