@@ -1,74 +1,59 @@
-from selenium import webdriver
-import re
-import time
-from webdriver_manager.chrome import ChromeDriverManager
-from random import randint
-from selenium.webdriver.chrome.options import Options
 from helper import *
+from requests import get
+from bs4 import BeautifulSoup, element
 
-
-'''
-options = webdriver.ChromeOptions()
-options.add_argument('headless')
-options.add_argument('window-size=1200x600')
-
-chrome_options = Options()
-
-chrome_options.add_argument('--headless')
-
-chrome_options.add_argument('log-level=2')
-'''
 
 courses = collectcourses()
 print(courses.list)
+courselist = []
+for i in courses.list:
+    code = i[0]
+    html = get("http://www.calendar.ubc.ca/vancouver/courses.cfm?page=code&code=%s" % code).text
+    bs = BeautifulSoup(html, 'html.parser')
+    for number in i[1]:
+        info = CourseInfo()
+        name = bs.find("a", {"name": str(number)})
+        if name is None:
+            print("could not find course: %s %s" % (code, number))
+            continue
+        name = name.findParent("dt")
+        description = name.findNext('dd')
+        name = name.text
+        ptype = 0
+        pnum = 0
 
-browser = webdriver.Chrome(ChromeDriverManager().install())
-info_list = []
-# populate info_list
-for course in courses.list:
-    code = course[0]
-    browser.get("http://www.calendar.ubc.ca/vancouver/courses.cfm?page=code&code=%s" % code)
-    if browser.current_url.endswith('index.cfm'):
-        print('WARNING: Could not find course code %s' % code)
-    else:
-        for number in course[1]:
+        info.credits = name[name.find('(') + 1:name.find(')')]
+        info.name = name[name.find(')')+2:]
+        info.code = code
+        info.number = number
 
-            # find corresponding course name and page element
-            element = browser.find_elements_by_xpath('//*[@name="%s"]/parent::dt/following-sibling::dd[1]' % number)
-            if len(element) == 0:
-                print('WARNING: Could not find course %s %s' % (code, number))
-            elif len(element) > 1:
-                print('WARNING: Duplicate course %s %s?' % (code, number))
-            else:
-                name = browser.find_elements_by_xpath('//*[@name="%s"]/parent::dt' % number)
-                name = name[0].text
-                credit = name[name.find('(') + 1:name.find(')')]
+        for paragraph in description.get_text(separator='\n---\n').split('\n---\n'):
+            paragraph = paragraph.strip()
+            if ptype == 0:
+                if pnum == 0:
+                    info.description = paragraph
+                elif paragraph.lower().startswith('prerequisite'):
+                    ptype = 1
+                elif paragraph.lower().startswith('corequisite'):
+                    ptype = 2
+                elif paragraph.lower().startswith('equivalency'):
+                    ptype = 3
+                elif 'this course is not eligible for credit/d/fail grading' in paragraph:  #cr/d/f
+                    info.cdf = False
+                elif re.search(r'\[[0-9]-[0-9]-[0-9]\*?\]', paragraph): #hours required
+                    pass
+            elif ptype == 1:
+                info.prereqs = parsereqs(paragraph.strip())
+                ptype = 0
+            elif ptype == 2:
+                info.coreqs = parsereqs(paragraph.strip())
+                ptype = 0
+            elif ptype == 3:
+                info.equivalency = parsereqs(paragraph.strip())
+                ptype = 0
+            pnum += 1
 
-                info = CourseInfo()
-                info.name = name.split(') ', 1)[1]
-                info.code = code
-                info.number = number
-                info.credits = credit
+        courselist.append(info)
 
-                element = element[0]
-
-                # find prerequisites and corequisites
-                for paragraph in element.text.split('\n'):
-                    if paragraph.lower().startswith('prerequisite'):
-                        prereqs = paragraph.split(': ', 1)[1]
-                        info.prereqs = parsereqs(prereqs)
-
-                    if paragraph.lower().startswith('corequisite'):
-                        coreqs = paragraph.split(': ', 1)[1]
-                        info.coreqs = parsereqs(coreqs)
-
-                    if paragraph.lower().startswith('equivalency'):
-                        equivs = paragraph.split(': ', 1)[1]
-                        info.equivalency = parsereqs(equivs)
-                info_list.append(info)
-
-for course in info_list:
-    # print(course)
+for course in courselist:
     print(course)
-
-browser.quit()
